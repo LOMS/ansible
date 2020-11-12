@@ -26,6 +26,7 @@ import pkgutil
 import pwd
 import re
 import time
+from collections import OrderedDict
 
 from contextlib import contextmanager
 from distutils.version import LooseVersion
@@ -74,8 +75,7 @@ JINJA2_OVERRIDE = '#jinja2:'
 
 from jinja2 import __version__ as j2_version
 from jinja2 import Environment
-from jinja2.utils import concat as j2_concat
-
+from jinja2.utils import concat as j2_concat, missing
 
 USE_JINJA2_NATIVE = False
 if C.DEFAULT_JINJA2_NATIVE:
@@ -314,6 +314,12 @@ class AnsibleUndefined(StrictUndefined):
     def __contains__(self, item):
         # Return original Undefined object to preserve the first failure context
         return self
+
+    @property
+    def _undefined_message(self):
+        if isinstance(self._undefined_obj, KnownVariablesDict):
+            return "FUCK LOL {}".format(self._undefined_obj.name())
+        return "SUKA SRABOTALO {}".format(type(self._undefined_obj))
 
 
 class AnsibleContext(Context):
@@ -614,22 +620,39 @@ class KnownVariablesDict(dict):
     a = dict["variable_root"]["sub_variable"]["sub_sub_variable"]
 
     """
-    @classmethod
-    def from_dict(cls, d):
-        return cls(**d)
+
+    def __init__(self, *args, **kwargs):
+        kwargs['__path'] = kwargs.get('__path') or ''
+        super(KnownVariablesDict, self).__init__(*args, **kwargs)
+
+    @property
+    def __path(self):
+        return self['__path']
+
+    # @__path.setter
+    # def __path(self, value):
+    #     self['__path'] = value
+
+    def __get_path(self, key):
+        if self.__path:
+            return "{0}.{1}".format(self.__path, key)
+        return key
+
+    def __get_subdict(self, subdict_name, dict_=None):
+        if dict_:
+            return KnownVariablesDict(__path=self.__get_path(subdict_name), **dict_)
+        return KnownVariablesDict(__path=self.__get_path(subdict_name))
 
     def __setitem__(self, key, value):
-        if isinstance(value, dict):
-            value = self.from_dict(value)
         if "." in key:
             subdict_name, subitem = key.split(".", 1)
-            subdict = self.setdefault(subdict_name, KnownVariablesDict())
-            if isinstance(subdict, KnownVariablesDict):
-                self[subdict_name][subitem] = value
-            else:
-                self[subdict_name] = KnownVariablesDict(**{subitem: value})
-
+            subdict = self.setdefault(subdict_name, self.__get_subdict(subdict_name))
+            if not isinstance(subdict, KnownVariablesDict):
+                subdict = self[subdict_name] = self.__get_subdict(subdict_name)
+            subdict[subitem] = value
         else:
+            if isinstance(value, (dict, OrderedDict)):
+                value = self.__get_subdict(key)
             super(KnownVariablesDict, self).__setitem__(key, value)
 
     def __getitem__(self, key):
@@ -638,6 +661,11 @@ class KnownVariablesDict(dict):
             return self[subdict][subitem]
         else:
             return super(KnownVariablesDict, self).__getitem__(key)
+
+    def __getattr__(self, item):
+        if 'pidor' in item:
+            print("PIDOR!")
+        return dict.__getattr__(self, item)
 
 
 class Templar:
@@ -1089,6 +1117,8 @@ class Templar:
             try:
                 ran = instance.run(loop_terms, variables=self._available_variables, **kwargs)
             except (AnsibleUndefinedVariable, UndefinedError) as e:
+                if isinstance(e, AnsibleUndefinedVariable):
+                    raise
                 raise AnsibleUndefinedVariable(e)
             except Exception as e:
                 if self._fail_on_lookup_errors:
@@ -1185,7 +1215,7 @@ class Templar:
 
             jvars = AnsibleJ2Vars(self, t.globals)
 
-            self.cur_context = new_context = t.new_context(jvars, shared=True, locals=self._known_variables)
+            self.cur_context = new_context = t.new_context(jvars, shared=True)
             rf = t.root_render_func(new_context)
 
             try:
@@ -1228,7 +1258,8 @@ class Templar:
             if fail_on_undefined:
                 if isinstance(e, AnsibleUndefinedVariable):
                     raise
-                raise AnsibleUndefinedVariable("variable {0} is undefined: {1}".format(data, e))
+                raise AnsibleUndefinedVariable("Shitty template: {0} KnownVars = {1}, {2}".format(data, self._known_variables, e))
+                raise AnsibleUndefinedVariable("UndefinedError in Templar.to_template with template '{0}': {1}".format(data, e))
             else:
                 display.debug("Ignoring undefined failure: %s" % to_text(e))
                 return data

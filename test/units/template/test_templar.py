@@ -42,9 +42,9 @@ class BaseTemplar(object):
         nested_self_pointing['a'] = 'A!'
         nested_self_pointing['b'] = '{{ nested_self_pointing.a }}/B!'
         nested_self_pointing['foo'] = '{{ foo }}-bara'
-        nested_self_pointing['sub_nested'] = {
-            'c': "{{ nested_self_pointing.b }}/C!",
-        }
+        sub_nested_dict = nested_self_pointing['sub_nested_dict'] = OrderedDict()
+        sub_nested_dict['c'] = "{{ nested_self_pointing.b }}/C!"
+        sub_nested_dict['self_sub_pointing'] = "{{ nested_self_pointing.sub_nested_dict }}"
 
         self.test_vars = dict(
             foo="bar",
@@ -67,7 +67,7 @@ class BaseTemplar(object):
                 'a': 'A!',
                 'b': 'B!',
                 'foo': '{{foo}}',
-                'sub_nested': {
+                'sub_nested_dict': {
                     'my_foo': "foo{{ foo }}",
                 }
             },
@@ -295,13 +295,16 @@ class TestTemplarMisc(BaseTemplar, unittest.TestCase):
         self.assertEqual(self.templar.template("{{ nested_simple.a }}"), "A!")
         self.assertEqual(self.templar.template("{{ nested_simple.b }}"), "B!")
         self.assertEqual(self.templar.template("{{ nested_simple.foo }}"), "bar")
-        self.assertEqual(self.templar.template("{{ nested_simple.sub_nested.my_foo }}"), "foobar")
+        self.assertEqual(self.templar.template("{{ nested_simple.sub_nested_dict.my_foo }}"), "foobar")
 
     def test_nested_recursive(self):
         self.assertEqual(self.templar.template("{{ nested_self_pointing.a }}"), "A!")
         self.assertEqual(self.templar.template("{{ nested_self_pointing.b }}"), "A!/B!")
         self.assertEqual(self.templar.template("{{ nested_self_pointing.foo }}"), "bar-bara")
-        self.assertEqual(self.templar.template("{{ nested_self_pointing.sub_nested.c }}"), "A!/B!/C!")
+        self.assertEqual(self.templar.template("{{ nested_self_pointing.sub_nested_dict.c }}"), "A!/B!/C!")
+
+    def test_shit(self):
+        print(self.templar.template("KOZA DEREZA {{ nested_self_pointing.sub_nested_dict.pidor }}"))
 
     def test_templar_escape_backslashes(self):
         # Rule of thumb: If escape backslashes is True you should end up with
@@ -493,6 +496,7 @@ class TestKnownVariablesDict(unittest.TestCase):
     def test_assign_dict(self):
         kvd = KnownVariablesDict()
         kvd['a'] = {'b': 'c'}
+        self.assertIsInstance(kvd['a'], KnownVariablesDict)
         self.assertEqual(kvd['a.b'], 'c')
         self.assertIsInstance(kvd['a.b'], str)
         kvd['a.b.c'] = 'd'

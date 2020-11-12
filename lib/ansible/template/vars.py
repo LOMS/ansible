@@ -60,6 +60,8 @@ class AnsibleJ2Vars(Mapping):
                         self._locals[key] = val
 
     def __contains__(self, k):
+        if k in self._templar._known_variables:
+            return True
         if k in self._templar.available_variables:
             return True
         if k in self._locals:
@@ -82,6 +84,8 @@ class AnsibleJ2Vars(Mapping):
         return len(keys)
 
     def __getitem__(self, varname):
+        if varname in self._templar._known_variables:
+            return self._templar._known_variables[varname]
         if varname not in self._templar.available_variables:
             if varname in self._locals:
                 return self._locals[varname]
@@ -105,7 +109,7 @@ class AnsibleJ2Vars(Mapping):
             try:
                 value = self._templar.template(variable, path_to_variable=varname)
             except AnsibleUndefinedVariable as e:
-                raise AnsibleUndefinedVariable("%s: %s" % (to_native(variable), e.message))
+                raise AnsibleUndefinedVariable("AnsibleJ2Vars {0}".format(e))
             except Exception as e:
                 msg = getattr(e, 'message', None) or to_native(e)
                 raise AnsibleError("An unhandled exception occurred while templating '%s'. "
